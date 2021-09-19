@@ -4,13 +4,13 @@
 RTC_PCF8523 rtc;
 
 int RELAY_PIN = 7;
-int inputPin = 8; //infrared proximity switch connected to digital pin 2
+int inputPin = 8; 
 int buttonPin = 2;
 
 bool led_on = false;
 long target_time;
 
-DateTime alarmDate (2021, 9, 11, 7, 30, 0);
+DateTime alarmDate (2021, 9, 11, 7, 30, 0); //Set time here. Date doesn't matter only the time.
 DateTime alarmEnd;
 
 
