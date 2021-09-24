@@ -1,16 +1,26 @@
 
 #include "RTClib.h"
 
+// Use a transistor instead of the giant ass relay shield. Also switch to arduino nano?
+
 RTC_PCF8523 rtc;
 
+// ToDo: Make these preprocessor variables
+int alarmHour = 7;          // Hour in the day to alarm
+int alarmMinute = 0;        // Minute in the day to alarm
+int snoozeLength = 15;      // Minutes to snooze for
+int alarmLength = 25;       // Minutes to alarm for
+int fullAlarmTime = 60;     // Run through snoozes and alarms and shit for an this many minutes
+bool snoozeEnabled = true;  // Enables or disables the snooze. If snooze is off it'll run untill the fullAlarmTime minutes is over
+
 int RELAY_PIN = 7;
-int inputPin = 8; 
+int inputPin = 8;
 int buttonPin = 2;
 
 bool led_on = false;
 long target_time;
 
-DateTime alarmDate (2021, 9, 11, 7, 30, 0); //Set time here. Date doesn't matter only the time.
+DateTime alarmDate (2021, 9, 11, 7, 00, 0); //Set time here. Date doesn't matter, only the time.
 DateTime alarmEnd;
 
 
@@ -21,6 +31,7 @@ bool firstDeactivate = true;
 bool firstActivate = true;
 
 DateTime alarmStart;
+DateTime fullAlarmEnd;
 
 bool blinking = false;
 
@@ -29,7 +40,8 @@ DateTime nextAlarmDatetime;
 enum State {
   Activated,
   Deactivated,
-  Alarming
+  Alarming,
+  Snoozing
 };
 
 State currentState;
@@ -49,11 +61,11 @@ void showDate(const char* txt, const DateTime& dt) {
   Serial.print(':');
   Serial.print(dt.second(), DEC);
 
-//  Serial.print(" = ");
-//  Serial.print(dt.unixtime());
-//  Serial.print("s / ");
-//  Serial.print(dt.unixtime() / 86400L);
-//  Serial.print("d since 1970");
+  //  Serial.print(" = ");
+  //  Serial.print(dt.unixtime());
+  //  Serial.print("s / ");
+  //  Serial.print(dt.unixtime() / 86400L);
+  //  Serial.print("d since 1970");
 
   Serial.println();
 }
@@ -61,10 +73,10 @@ void showDate(const char* txt, const DateTime& dt) {
 void setLight(bool on) {
   if (on) {
     digitalWrite(RELAY_PIN, HIGH);
-//    Serial.println("Switching on");
+    //    Serial.println("Switching on");
   } else {
     digitalWrite(RELAY_PIN, LOW);
-//    Serial.println("Switching off");
+    //    Serial.println("Switching off");
   }
   Serial.flush();
 }
@@ -103,7 +115,7 @@ bool check(const DateTime& d1, const DateTime& d2) {
 
 void setup() {
   Serial.begin(57600);
-  
+
 #ifndef ESP8266
   while (!Serial);
 #endif
@@ -118,7 +130,7 @@ void setup() {
     Serial.println("RTC is NOT initialized, let's set the time!");
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   }
-  
+
   rtc.start();
 
   pinMode(LED_BUILTIN, OUTPUT);
@@ -137,6 +149,7 @@ void setup() {
   showDate("Current time: ", rtc.now());
 }
 
+DateTime alarmStart;
 
 void loop() {
   DateTime now(rtc.now());
@@ -146,6 +159,7 @@ void loop() {
       blinking = false;
       firstDeactivate = true;
       firstAlarm = true;
+      firstSnooze = true;
 
       if (firstActivate) {
         Serial.println("State: Activated");
@@ -162,10 +176,11 @@ void loop() {
         currentState = Deactivated;
       }
       break;
-    case Deactivated:
+    case Deactivated: // The original concept was if the alarm time runs out like if it ran for like 25 minutes and that time ended then it would go into deactivated
       blinking = false;
       firstActivate = true;
       firstAlarm = true;
+      firstSnooze = true;
 
       if (firstDeactivate) {
         Serial.println("State: Deactivated");
@@ -183,6 +198,7 @@ void loop() {
     case Alarming:
       firstActivate = true;
       firstDeactivate = true;
+      firstSnooze = true;
 
       if (firstAlarm) {
         Serial.println("State: Alarming");
@@ -194,13 +210,37 @@ void loop() {
 
       if (alarmEnd < now) {
         Serial.println("Alarm ended");
-        currentState = Deactivated;
+        if (snoozeEnabled) {
+          currentState = Snoozing;
+        } else {
+          currentState = Deactivated;
+        }
       }
 
       if (buttonPressed()) {
         Serial.println("Button pressed");
-        currentState = Deactivated;
+        currentState = Activated;
       }
+      break;
+    case Snoozing:
+      blinking = false;
+      firstActivate = true;
+      firstDeactivate = true;
+      firstAlarm = true;
+
+      if (firstSnooze) {
+        Serial.println("State: Snoozing");
+        alarmStart = (now + TimeSpan(0, 0, snoozeLength, 0));
+        showDate("Alarm starts again at: ", alarmStart);
+        setLight(false);
+        firstSnooze = false;
+      }
+
+      if (alarmStart < now) {
+        Serial.println("Snooze over");
+        currentState = Alarming;
+      }
+
       break;
   }
 
